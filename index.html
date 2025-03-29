@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Renewable Energy Prioritization using TOPSIS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Include Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* Global Styles */
+    body { margin: 0; font-family: Arial, sans-serif; background: #f9f9f9; }
+    header { background: #333; color: #fff; padding: 10px; display: flex; align-items: center; }
+    header h1 { flex-grow: 1; text-align: center; }
+    header button { background: #fff; border: none; padding: 5px 10px; cursor: pointer; }
+    /* Main Content */
+    #main-content { padding: 20px; transition: margin-left 0.3s ease; }
+    #content { max-width: 600px; margin: 20px auto; background: #fff; padding: 20px; border-radius: 5px; }
+    .criteria-group { margin: 20px 0; }
+    .criteria-group div { margin-bottom: 10px; }
+    .navigation { margin-top: 20px; }
+    .navigation button { margin-right: 10px; }
+    /* Slide-In Menu */
+    .menu-bar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background: #fafafa; border-right: 1px solid #ddd; box-shadow: 2px 0 5px rgba(0,0,0,0.3); padding: 20px; transition: transform 0.3s ease; z-index: 1000; }
+    .menu-bar.hidden { transform: translateX(-100%); }
+    .menu-header { display: flex; justify-content: space-between; align-items: center; }
+    .menu-header h2 { margin: 0; }
+    .menu-content { margin-top: 20px; }
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .toggle-row input[type="number"] { width: 60px; margin-left: 8px; }
+    .stats-section { margin-top: 20px; }
+    .stats-section canvas { display: block; margin: 10px auto; }
+    /* Feedback Modal */
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 2000; }
+    .modal { background: #fff; padding: 20px; width: 90%; max-width: 400px; border-radius: 5px; position: relative; }
+    .modal h2 { margin-bottom: 15px; }
+    .modal .feedback-question { margin-bottom: 15px; }
+    .modal button.close-btn { position: absolute; top: 10px; right: 10px; background: #aaa; color: #fff; border: none; padding: 5px; }
+  </style>
+</head>
+<body>
+  <!-- Slide-In Menu Bar -->
+  <div id="menu-bar" class="menu-bar hidden">
+    <div class="menu-header">
+      <h2>Settings & Stats</h2>
+      <button id="close-menu">X</button>
+    </div>
+    <div class="menu-content">
+      <!-- PESTEL Weight Toggles -->
+      <div class="toggle-row">
+        <label><input type="checkbox" id="togglePolitical" checked /> Political</label>
+        <input type="number" id="weightPolitical" value="1" min="0" step="0.1" />
+      </div>
+      <div class="toggle-row">
+        <label><input type="checkbox" id="toggleEconomic" checked /> Economic</label>
+        <input type="number" id="weightEconomic" value="1" min="0" step="0.1" />
+      </div>
+      <div class="toggle-row">
+        <label><input type="checkbox" id="toggleSocial" checked /> Social</label>
+        <input type="number" id="weightSocial" value="1" min="0" step="0.1" />
+      </div>
+      <div class="toggle-row">
+        <label><input type="checkbox" id="toggleTechnological" checked /> Technological</label>
+        <input type="number" id="weightTechnological" value="1" min="0" step="0.1" />
+      </div>
+      <div class="toggle-row">
+        <label><input type="checkbox" id="toggleEnvironmental" checked /> Environmental</label>
+        <input type="number" id="weightEnvironmental" value="1" min="0" step="0.1" />
+      </div>
+      <div class="toggle-row">
+        <label><input type="checkbox" id="toggleLegal" checked /> Legal</label>
+        <input type="number" id="weightLegal" value="1" min="0" step="0.1" />
+      </div>
+      <!-- Live TOPSIS Stats -->
+      <div class="stats-section">
+        <h3>TOPSIS Live Results</h3>
+        <canvas id="topsisChart" width="250" height="200"></canvas>
+        <p>Total Evaluations: <span id="topsisCount">0</span></p>
+      </div>
+      <!-- Feedback Stats -->
+      <div class="stats-section">
+        <h3>Feedback Stats</h3>
+        <p>Total Feedback: <span id="feedbackCount">0</span></p>
+      </div>
+      <button id="refreshStats">Refresh Stats</button>
+      <button id="back-to-main" style="margin-top:10px;">Main Page</button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div id="main-content">
+    <header>
+      <button id="open-menu">☰ Menu</button>
+      <h1>Renewable Energy Prioritization using TOPSIS</h1>
+    </header>
+    <section id="content">
+      <!-- Dynamic evaluation pages will load here -->
+    </section>
+  </div>
+
+  <!-- Feedback Modal -->
+  <div id="feedbackModal" class="modal-overlay">
+    <div class="modal">
+      <button class="close-btn" id="closeFeedback">X</button>
+      <h2>App Feedback</h2>
+      <div id="feedbackQuestions">
+        <!-- Feedback questions will be inserted here -->
+      </div>
+      <button id="submitFeedbackBtn">Submit Feedback</button>
+    </div>
+  </div>
+
+  <script>
+    // --- Global Variables ---
+    const reSystems = ["Hydro", "Solar", "Wind", "Geothermal", "Bioenergy"];
+    const evalQuestion = "How important is this criterion for"; // Base question
+    const criteriaExplanation = {
+      1: "1 - Not Important",
+      2: "2 - Slightly Important",
+      3: "3 - Moderately Important",
+      4: "4 - Very Important",
+      5: "5 - Extremely Important"
+    };
+    let currentSystem = 0;
+    const responses = []; // Store responses for each system
+    reSystems.forEach(() => {
+      responses.push({ political: 1, economic: 1, social: 1, technological: 1, environmental: 1, legal: 1 });
+    });
+    // Use your Vercel API URL below (ensure it ends with /api)
+    const scriptURL = "https://your-vercel-app.vercel.app/api";  
+
+    // --- Menu Bar Logic ---
+    document.getElementById("open-menu").addEventListener("click", () => {
+      document.getElementById("menu-bar").classList.remove("hidden");
+    });
+    document.getElementById("close-menu").addEventListener("click", () => {
+      document.getElementById("menu-bar").classList.add("hidden");
+    });
+    document.getElementById("back-to-main").addEventListener("click", () => {
+      document.getElementById("menu-bar").classList.add("hidden");
+    });
+    document.getElementById("refreshStats").addEventListener("click", fetchStats);
+
+    // --- Evaluation Page Rendering ---
+    function loadEvaluationPage(index) {
+      const contentDiv = document.getElementById("content");
+      contentDiv.innerHTML = "";
+      const title = document.createElement("h2");
+      title.textContent = "Evaluate " + reSystems[index];
+      contentDiv.appendChild(title);
+      
+      // Display question
+      const question = document.createElement("p");
+      question.textContent = `${evalQuestion} ${reSystems[index]}?`;
+      contentDiv.appendChild(question);
+      
+      // Dropdown (1 to 5)
+      const select = document.createElement("select");
+      select.id = "responseSelect";
+      for (let i = 1; i <= 5; i++) {
+        const option = document.createElement("option");
+        option.value = i;
+        option.textContent = criteriaExplanation[i];
+        select.appendChild(option);
+      }
+      select.addEventListener("change", () => {
+        const val = parseInt(select.value);
+        responses[index] = { political: val, economic: val, social: val, technological: val, environmental: val, legal: val };
+      });
+      contentDiv.appendChild(select);
+      
+      // Navigation buttons
+      const navDiv = document.createElement("div");
+      navDiv.className = "navigation";
+      if (index > 0) {
+        const prevBtn = document.createElement("button");
+        prevBtn.textContent = "Previous";
+        prevBtn.onclick = () => { currentSystem--; loadEvaluationPage(currentSystem); };
+        navDiv.appendChild(prevBtn);
+      }
+      if (index < reSystems.length - 1) {
+        const nextBtn = document.createElement("button");
+        nextBtn.textContent = "Next";
+        nextBtn.onclick = () => { currentSystem++; loadEvaluationPage(currentSystem); };
+        navDiv.appendChild(nextBtn);
+      } else {
+        const submitBtn = document.createElement("button");
+        submitBtn.textContent = "Submit Evaluation";
+        submitBtn.onclick = submitEvaluation;
+        navDiv.appendChild(submitBtn);
+      }
+      contentDiv.appendChild(navDiv);
+    }
+
+    // --- Submit Evaluation ---
+    function submitEvaluation() {
+      // Build PESTEL data from menu toggles
+      const pestelData = {
+        political: { active: document.getElementById("togglePolitical").checked, weight: document.getElementById("weightPolitical").value },
+        economic: { active: document.getElementById("toggleEconomic").checked, weight: document.getElementById("weightEconomic").value },
+        social: { active: document.getElementById("toggleSocial").checked, weight: document.getElementById("weightSocial").value },
+        technological: { active: document.getElementById("toggleTechnological").checked, weight: document.getElementById("weightTechnological").value },
+        environmental: { active: document.getElementById("toggleEnvironmental").checked, weight: document.getElementById("weightEnvironmental").value },
+        legal: { active: document.getElementById("toggleLegal").checked, weight: document.getElementById("weightLegal").value }
+      };
+      
+      const payload = {
+        type: "evaluation",
+        reSystems: reSystems,
+        reResponses: responses,
+        pestel: pestelData
+      };
+      
+      // For POST, use mode: "no-cors" since our Vercel API supports proper CORS
+      fetch(scriptURL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        mode: "cors",  // CORS mode should work with our Vercel API
+        body: JSON.stringify(payload)
+      })
+      .then(response => response.json())
+      .then(data => {
+        alert("Your response has been submitted.");
+        showFeedbackModal();
+      })
+      .catch(err => {
+        console.error("Error submitting evaluation:", err);
+        alert("Error submitting evaluation. Please try again later.");
+      });
+    }
+
+    // --- Feedback Modal ---
+    function showFeedbackModal() {
+      const modal = document.getElementById("feedbackModal");
+      const feedbackDiv = document.getElementById("feedbackQuestions");
+      feedbackDiv.innerHTML = "";
+      const questions = [
+        "Overall usability of the app?",
+        "Design and layout?",
+        "Ease of evaluation process?",
+        "Clarity of information?",
+        "Overall satisfaction?"
+      ];
+      questions.forEach((q, i) => {
+        const div = document.createElement("div");
+        div.className = "feedback-question";
+        const label = document.createElement("label");
+        label.textContent = q;
+        const select = document.createElement("select");
+        for (let v = 1; v <= 5; v++) {
+          const option = document.createElement("option");
+          option.value = v;
+          option.textContent = v === 1 ? "1 - Bad" : v === 5 ? "5 - Excellent" : v;
+          select.appendChild(option);
+        }
+        div.appendChild(label);
+        div.appendChild(select);
+        feedbackDiv.appendChild(div);
+      });
+      modal.style.display = "flex";
+    }
+    
+    document.getElementById("closeFeedback").addEventListener("click", () => {
+      document.getElementById("feedbackModal").style.display = "none";
+      currentSystem = 0;
+      loadEvaluationPage(currentSystem);
+    });
+    
+    document.getElementById("submitFeedbackBtn").addEventListener("click", () => {
+      const feedbackDiv = document.getElementById("feedbackQuestions");
+      const selects = feedbackDiv.getElementsByTagName("select");
+      const answers = [];
+      for (let select of selects) {
+        answers.push(parseInt(select.value));
+      }
+      const payload = { type: "feedback", answers: answers };
+      fetch(scriptURL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        mode: "cors",
+        body: JSON.stringify(payload)
+      })
+      .then(response => response.json())
+      .then(data => {
+        alert("Thank you for your feedback.");
+        document.getElementById("feedbackModal").style.display = "none";
+        currentSystem = 0;
+        loadEvaluationPage(currentSystem);
+      })
+      .catch(err => {
+        console.error("Error submitting feedback:", err);
+        alert("Error submitting feedback.");
+      });
+    });
+
+    // --- Live Stats ---
+    function fetchStats() {
+      // Fetch TOPSIS live results
+      fetch(scriptURL + "?action=topsis")
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          alert("Error: " + data.error);
+        } else {
+          updateChart(data.topsisResults);
+          document.getElementById("topsisCount").textContent = data.evaluationCount || 0;
+        }
+      })
+      .catch(err => console.error("Error fetching TOPSIS results:", err));
+      
+      // Fetch Feedback stats
+      fetch(scriptURL + "?action=feedback")
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          document.getElementById("feedbackCount").textContent = "0";
+        } else {
+          document.getElementById("feedbackCount").textContent = data.feedbackCount || 0;
+        }
+      })
+      .catch(err => console.error("Error fetching feedback stats:", err));
+    }
+    
+    // --- Chart.js Setup ---
+    let topsisChartInstance = null;
+    function initChart() {
+      const ctx = document.getElementById("topsisChart").getContext("2d");
+      topsisChartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: reSystems,
+          datasets: [{
+            label: "Relative Closeness (TOPSIS)",
+            data: [0, 0, 0, 0, 0],
+            backgroundColor: "rgba(75,192,192,0.6)"
+          }]
+        },
+        options: {
+          scales: { y: { beginAtZero: true, max: 1 } }
+        }
+      });
+    }
+    
+    function updateChart(results) {
+      if (!topsisChartInstance) return;
+      const data = results.map(r => r.relativeCloseness);
+      topsisChartInstance.data.datasets[0].data = data;
+      topsisChartInstance.update();
+    }
+    
+    // --- Initialize on Load ---
+    window.onload = function() {
+      initChart();
+      loadEvaluationPage(currentSystem);
+      fetchStats();
+    };
+  </script>
+</body>
+</html>
